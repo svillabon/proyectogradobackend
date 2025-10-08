@@ -150,7 +150,6 @@ backend/
 - **estudiante2**: estudiante2 / admin123
 
 ## Validaciones
-- Emails deben ser institucionales (@uni.edu.co)
 - Contraseñas mínimo 6 caracteres
 - Horarios de reservas no pueden solaparse
 - Solo admin puede crear usuarios y espacios
