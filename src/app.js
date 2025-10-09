@@ -5,7 +5,9 @@ require('dotenv').config();
 const app = express();
 
 // Middlewares
-app.use(cors());
+app.use(cors({
+  origin: process.env.FRONTEND_URL || "localhost:3000"
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
