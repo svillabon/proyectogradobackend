@@ -34,7 +34,8 @@ class ReportService {
         values.push(estado);
       }
 
-      const whereClause = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
+      const whereClause =
+        conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
 
       // 1. Estadísticas generales
       const statsQuery = `
@@ -51,11 +52,15 @@ class ReportService {
 
       // 2. Reservas por espacio
       const espaciosQuery = `
-        SELECT s.nombre as espacio, COUNT(r.id) as cantidad
+        SELECT 
+          s.nombre as espacio,
+          s.ubicacion,
+          s.capacidad,
+          COUNT(r.id) as cantidad
         FROM reservas r
         JOIN espacios s ON r.espacio_id = s.id
         ${whereClause}
-        GROUP BY s.id, s.nombre
+        GROUP BY s.id, s.nombre, s.ubicacion, s.capacidad
         ORDER BY cantidad DESC
       `;
       const espaciosResult = await pool.query(espaciosQuery, values);
@@ -87,49 +92,92 @@ class ReportService {
 
       // 5. Distribución por estado
       const estadosData = [
-        { estado: 'Aprobado', cantidad: parseInt(stats.reservas_aprobadas), color: '#4caf50' },
-        { estado: 'Pendiente', cantidad: parseInt(stats.reservas_pendientes), color: '#ff9800' },
-        { estado: 'Rechazado', cantidad: parseInt(stats.reservas_rechazadas), color: '#f44336' }
-      ].filter(item => item.cantidad > 0);
+        {
+          estado: 'Aprobado',
+          cantidad: parseInt(stats.reservas_aprobadas),
+          color: '#4caf50',
+        },
+        {
+          estado: 'Pendiente',
+          cantidad: parseInt(stats.reservas_pendientes),
+          color: '#ff9800',
+        },
+        {
+          estado: 'Rechazado',
+          cantidad: parseInt(stats.reservas_rechazadas),
+          color: '#f44336',
+        },
+      ].filter((item) => item.cantidad > 0);
 
-      // 6. Espacios más usados con porcentajes
+      // 6. Espacios más usados con toda la información
       const totalReservas = parseInt(stats.total_reservas);
-      const espaciosMasUsados = espaciosResult.rows.map(espacio => ({
-        nombre: espacio.espacio,
-        reservas: parseInt(espacio.cantidad),
-        porcentaje: totalReservas > 0 ? (parseInt(espacio.cantidad) / totalReservas) * 100 : 0
-      })).slice(0, 5);
+      const espaciosMasUsados = espaciosResult.rows
+        .map((espacio) => ({
+          nombre: espacio.espacio,
+          ubicacion: espacio.ubicacion,
+          capacidad: parseInt(espacio.capacidad || 0),
+          cantidad: parseInt(espacio.cantidad),
+          porcentaje:
+            totalReservas > 0
+              ? (parseInt(espacio.cantidad) / totalReservas) * 100
+              : 0,
+        }))
+        .slice(0, 10);
 
       // 7. Usuarios más activos
-      const usuariosMasActivos = usuariosResult.rows.map(usuario => ({
+      const usuariosMasActivos = usuariosResult.rows.map((usuario) => ({
         username: usuario.usuario,
         email: usuario.email,
-        reservas: parseInt(usuario.cantidad),
-        rol: usuario.rol
+        cantidad: parseInt(usuario.cantidad),
+        rol: usuario.rol,
       }));
+
+      // 8. Detalle completo de reservas para exportar
+      const detalleQuery = `
+        SELECT 
+          r.id,
+          u.username,
+          u.email as usuario_email,
+          s.nombre as espacio_nombre,
+          r.fecha,
+          r.hora_inicio,
+          r.hora_fin,
+          r.estado,
+          r.motivo
+        FROM reservas r
+        JOIN usuarios u ON r.usuario_id = u.id
+        JOIN espacios s ON r.espacio_id = s.id
+        ${whereClause}
+        ORDER BY r.fecha DESC, r.hora_inicio DESC
+        LIMIT 500
+      `;
+      const detalleResult = await pool.query(detalleQuery, values);
 
       return {
         totalReservas: parseInt(stats.total_reservas),
         reservasAprobadas: parseInt(stats.reservas_aprobadas),
         reservasPendientes: parseInt(stats.reservas_pendientes),
         reservasRechazadas: parseInt(stats.reservas_rechazadas),
-        reservasPorEspacio: espaciosResult.rows.map(row => ({
+        reservasPorEspacio: espaciosResult.rows.map((row) => ({
           espacio: row.espacio,
-          cantidad: parseInt(row.cantidad)
+          cantidad: parseInt(row.cantidad),
         })),
-        reservasPorUsuario: usuariosResult.rows.map(row => ({
+        reservasPorUsuario: usuariosResult.rows.map((row) => ({
           usuario: row.usuario,
           email: row.email,
           cantidad: parseInt(row.cantidad),
-          rol: row.rol
+          rol: row.rol,
         })),
-        reservasPorMes: mesesResult.rows.map(row => ({
-          mes: row.mes,
-          cantidad: parseInt(row.cantidad)
-        })).reverse(),
+        reservasPorMes: mesesResult.rows
+          .map((row) => ({
+            mes: row.mes,
+            cantidad: parseInt(row.cantidad),
+          }))
+          .reverse(),
         reservasPorEstado: estadosData,
         espaciosMasUsados,
-        usuariosMasActivos
+        usuariosMasActivos,
+        reservasDetalle: detalleResult.rows,
       };
     } catch (error) {
       console.error('Error generando reportes:', error);
